@@ -205,7 +205,7 @@ def _create_tables(connection: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS one_time_tokens (
             token_hash TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+            purpose TEXT NOT NULL CHECK (purpose = 'reset_password'),
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
             used_at INTEGER
@@ -234,6 +234,13 @@ def _create_tables(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_tokens_user ON one_time_tokens(user_id, purpose);
         CREATE INDEX IF NOT EXISTS idx_sessions_user ON auth_sessions(user_id);
         """
+    )
+    connection.execute(
+        "UPDATE users SET email_verified_at = COALESCE(email_verified_at, created_at)"
+    )
+    connection.execute(
+        "UPDATE one_time_tokens SET used_at = COALESCE(used_at, ?) WHERE purpose = 'verify_email'",
+        (int(time.time()),),
     )
     connection.executemany(
         "INSERT OR IGNORE INTO designations(name, role) VALUES (?, ?)",
@@ -283,6 +290,10 @@ def _bootstrap_admin(connection: sqlite3.Connection) -> None:
                VALUES ('Bootstrap Administrator', ?, ?, ?, 'Administrator', 'admin', 'admin', 1, ?, ?)""",
             (username, email, _hash_password(password), int(time.time()), int(time.time())),
         )
+    connection.execute(
+        "UPDATE users SET email_verified_at = COALESCE(email_verified_at, created_at) WHERE email = ?",
+        (email,),
+    )
 
 
 def initialize_auth() -> None:
@@ -324,7 +335,7 @@ def _mailer_config() -> tuple[str, int, str, str, str, str]:
     sender = os.getenv("SMARTBIN_SMTP_FROM", "").strip()
     if not base_url or not host or not sender:
         raise AuthConfigurationError(
-            "Email verification is not configured. Set SMARTBIN_APP_BASE_URL, SMARTBIN_SMTP_HOST, and SMARTBIN_SMTP_FROM."
+            "Password-reset and security emails are not configured. Set SMARTBIN_APP_BASE_URL, SMARTBIN_SMTP_HOST, and SMARTBIN_SMTP_FROM."
         )
     if not _valid_email(sender):
         raise AuthConfigurationError("SMARTBIN_SMTP_FROM must be a valid email address.")
@@ -414,7 +425,6 @@ def register_user(
         raise AuthError(error)
     if _consume_rate_limit("register", email, 3, 60 * 60):
         raise AuthError("Too many registration attempts. Try again later.")
-    base_url, _, _, _, _, _ = _mailer_config()
     with _database() as connection:
         connection.execute("BEGIN IMMEDIATE")
         if connection.execute(
@@ -430,70 +440,15 @@ def register_user(
         requested_role = option["role"]
         approved = int(requested_role == "public")
         now = int(time.time())
-        cursor = connection.execute(
+        connection.execute(
             """INSERT INTO users(full_name, username, email, phone, password_hash, designation,
-               requested_role, role, designation_approved, terms_accepted_at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'public', ?, ?, ?)""",
+               requested_role, role, designation_approved, email_verified_at, terms_accepted_at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'public', ?, ?, ?, ?)""",
             (
                 full_name, username, email, phone or None, _hash_password(password),
-                option["name"], requested_role, approved, now, now,
+                option["name"], requested_role, approved, now, now, now,
             ),
         )
-        token = _issue_token(connection, cursor.lastrowid, "verify_email")
-        link = _token_url(base_url, "verify", token)
-        _send_email(
-            email,
-            "Verify your Smart Waste Dashboard account",
-            f"Hello {full_name},\n\nVerify your email address with this one-time link (valid for one hour):\n{link}\n\nIf you did not request this account, you can ignore this message.",
-        )
-
-
-def verify_email_token(token: str) -> bool:
-    now = int(time.time())
-    with _database() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        token_row = connection.execute(
-            """SELECT user_id FROM one_time_tokens WHERE token_hash = ?
-               AND purpose = 'verify_email' AND used_at IS NULL AND expires_at > ?""",
-            (_secret_hash(token), now),
-        ).fetchone()
-        if not token_row:
-            return False
-        connection.execute(
-            "UPDATE one_time_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL",
-            (now, _secret_hash(token)),
-        )
-        connection.execute(
-            "UPDATE users SET email_verified_at = ? WHERE id = ? AND email_verified_at IS NULL",
-            (now, token_row["user_id"]),
-        )
-        return True
-
-
-def resend_verification(email: str) -> None:
-    email = _normalize_email(email)
-    if _consume_rate_limit("resend_verification", email, 3):
-        raise AuthError("Too many requests. Try again later.")
-    if not _valid_email(email):
-        return
-    base_url, _, _, _, _, _ = _mailer_config()
-    with _database() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        user = connection.execute(
-            "SELECT id, full_name FROM users WHERE email = ? AND email_verified_at IS NULL AND enabled = 1",
-            (email,),
-        ).fetchone()
-        if not user:
-            return
-        token = _issue_token(connection, user["id"], "verify_email")
-        link = _token_url(base_url, "verify", token)
-        _send_email(
-            email,
-            "Verify your Smart Waste Dashboard account",
-            f"Hello {user['full_name']},\n\nVerify your email address with this one-time link (valid for one hour):\n{link}\n",
-        )
-
-
 def _verify_second_factor(
     connection: sqlite3.Connection, user: sqlite3.Row, code: str
 ) -> tuple[bool, bool]:
@@ -540,8 +495,6 @@ def login(identifier: str, password: str, second_factor_code: str = "") -> tuple
         candidate_hash = user["password_hash"] if user else _DUMMY_PASSWORD_HASH
         password_matches = _verify_password(password, candidate_hash)
         if not user or not password_matches:
-            return "invalid", None
-        if user["email_verified_at"] is None:
             return "invalid", None
         if user["totp_enabled"]:
             second_factor_valid, recovered = _verify_second_factor(connection, user, second_factor_code)
@@ -623,7 +576,7 @@ def current_user() -> dict | None:
             st.session_state.pop("totp_setup_pending", None)
             return None
         user = connection.execute(
-            "SELECT * FROM users WHERE id = ? AND enabled = 1 AND email_verified_at IS NOT NULL",
+            "SELECT * FROM users WHERE id = ? AND enabled = 1",
             (session["user_id"],),
         ).fetchone()
         if not user:
@@ -673,7 +626,7 @@ def _session_actor(actor: dict) -> sqlite3.Row | None:
                FROM auth_sessions
                JOIN users ON users.id = auth_sessions.user_id
                WHERE auth_sessions.token_hash = ? AND users.id = ? AND users.enabled = 1
-               AND users.email_verified_at IS NOT NULL AND auth_sessions.expires_at > ?
+               AND auth_sessions.expires_at > ?
                AND auth_sessions.last_seen + ? > ?
                AND auth_sessions.created_at + ? > ?""",
             (
@@ -702,7 +655,7 @@ def pending_approvals(actor: dict) -> list[dict]:
     with _database() as connection:
         rows = connection.execute(
             """SELECT id, full_name, username, email, designation, requested_role, created_at
-               FROM users WHERE designation_approved = 0 AND email_verified_at IS NOT NULL
+               FROM users WHERE designation_approved = 0
                ORDER BY created_at"""
         ).fetchall()
     return [dict(row) for row in rows]
@@ -739,7 +692,7 @@ def all_users(actor: dict) -> list[dict]:
     require_permission(actor, "user_admin")
     with _database() as connection:
         rows = connection.execute(
-            """SELECT id, full_name, username, email, designation, role, email_verified_at, enabled
+            """SELECT id, full_name, username, email, designation, role, enabled
                FROM users ORDER BY created_at DESC"""
         ).fetchall()
     return [dict(row) for row in rows]
@@ -779,7 +732,7 @@ def request_password_reset(email: str) -> bool:
         with _database() as connection:
             connection.execute("BEGIN IMMEDIATE")
             user = connection.execute(
-                "SELECT id, full_name FROM users WHERE email = ? AND enabled = 1 AND email_verified_at IS NOT NULL",
+                "SELECT id, full_name FROM users WHERE email = ? AND enabled = 1",
                 (email,),
             ).fetchone()
             if not user:
@@ -847,7 +800,7 @@ def reset_password_with_recovery(email: str, code: str, password: str) -> tuple[
     with _database() as connection:
         connection.execute("BEGIN IMMEDIATE")
         user = connection.execute(
-            "SELECT id FROM users WHERE email = ? AND enabled = 1 AND email_verified_at IS NOT NULL",
+            "SELECT id FROM users WHERE email = ? AND enabled = 1",
             (email,),
         ).fetchone()
         if not user:
@@ -1010,19 +963,6 @@ def remaining_recovery_codes(user_id: int) -> int:
 
 
 def _handle_query_tokens() -> None:
-    verification_token = st.query_params.get("verify")
-    if verification_token:
-        try:
-            verified = verify_email_token(verification_token)
-        except (sqlite3.Error, OSError) as exc:
-            LOGGER.error("Email verification failed (%s).", type(exc).__name__)
-            st.error("We could not verify the email right now. Please try again.")
-        else:
-            if verified:
-                st.success("Email verified. You can now sign in.")
-            else:
-                st.error("This verification link is invalid, expired, or already used.")
-        del st.query_params["verify"]
     reset_token = st.query_params.get("reset")
     if reset_token:
         st.title("Reset your password")
@@ -1177,7 +1117,7 @@ def render_admin_management(actor: dict) -> None:
                 {
                     "Name": user["full_name"], "Username": user["username"], "Email": user["email"],
                     "Designation": user["designation"], "Role": user["role"],
-                    "Email verified": bool(user["email_verified_at"]), "Enabled": bool(user["enabled"]),
+                    "Account enabled": bool(user["enabled"]),
                 }
                 for user in users
             ],
@@ -1187,7 +1127,7 @@ def render_admin_management(actor: dict) -> None:
     st.markdown("#### Pending designation approvals")
     requests = pending_approvals(actor)
     if not requests:
-        st.info("No verified designation requests are waiting for approval.")
+        st.info("No designation requests are waiting for approval.")
     for request in requests:
         columns = st.columns([4, 1, 1])
         columns[0].markdown(
@@ -1280,7 +1220,7 @@ def _render_registration() -> None:
         full_name = st.text_input("Full name", max_chars=120)
         username = st.text_input("Username", help="3–32 letters, numbers, dots, underscores, or hyphens.")
         email = st.text_input("Email address", autocomplete="email")
-        phone = st.text_input("Phone number (optional)", help="Phone verification is optional; the account is verified by email.")
+        phone = st.text_input("Phone number (optional)")
         password = st.text_input("Password", type="password", autocomplete="new-password")
         confirmation = st.text_input("Confirm password", type="password", autocomplete="new-password")
         designation_names = [option["name"] for option in options]
@@ -1297,29 +1237,14 @@ def _render_registration() -> None:
                 register_user(full_name, username, email, phone, password, designation, terms_accepted=terms)
             except AuthError as exc:
                 st.error(str(exc))
-            except (sqlite3.Error, OSError, smtplib.SMTPException) as exc:
-                LOGGER.error("Registration email could not be delivered (%s).", type(exc).__name__)
-                st.error("The account could not be created because verification email delivery failed. Try again later.")
+            except (sqlite3.Error, OSError) as exc:
+                LOGGER.error("Account registration failed (%s).", type(exc).__name__)
+                st.error("The account could not be created. Try again later.")
             else:
-                st.success("Account created. Check your email and verify it within one hour before signing in.")
+                st.success("Account created. You can sign in now.")
                 option = next(option for option in options if option["name"] == designation)
                 if option["role"] != "public":
                     st.info("Your privileged designation is a request. Access remains limited until an administrator approves it.")
-    st.markdown("#### Resend email verification")
-    with st.form("resend_verification_form"):
-        resend_email = st.text_input("Email address for verification")
-        resend_submitted = st.form_submit_button("Send verification link")
-    if resend_submitted:
-        try:
-            resend_verification(resend_email)
-        except (AuthError, AuthConfigurationError) as exc:
-            LOGGER.error("Verification resend could not be completed (%s).", type(exc).__name__)
-            st.info("If an unverified account matches that address, a new link has been sent.")
-        except (OSError, smtplib.SMTPException, sqlite3.Error) as exc:
-            LOGGER.error("Verification email could not be sent (%s).", type(exc).__name__)
-            st.info("If an unverified account matches that address, a new link has been sent.")
-        else:
-            st.info("If an unverified account matches that address, a new link has been sent.")
 
 
 def _render_recovery() -> None:
@@ -1334,7 +1259,7 @@ def _render_recovery() -> None:
             LOGGER.error("Password-reset request failed (%s).", type(exc).__name__)
             st.error("The request could not be completed. Please try again.")
         else:
-            st.info("If a verified account matches that address and mail is configured, a reset link will be sent.")
+            st.info("If an account matches that address and mail is configured, a reset link will be sent.")
 
     st.markdown("#### Reset using a recovery code")
     st.caption("Recovery codes are single-use. Enter one with the account email, then choose a new password.")

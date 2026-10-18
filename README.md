@@ -15,21 +15,23 @@ Streamlit opens at `http://localhost:8501`. Sample classifier results and demand
 
 ## Authentication setup
 
-Configure a bootstrap administrator and mail delivery before allowing public registration. Set secrets in the deployment environment, not in source control:
+Email verification is disabled: users can sign in immediately after registration. Configure a bootstrap administrator to manage roles/designations. SMTP settings are optional and only needed for password-reset links and security notifications. Set secrets in the deployment environment, not in source control:
 
 ```powershell
 $env:SMARTBIN_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com"
 $env:SMARTBIN_BOOTSTRAP_ADMIN_PASSWORD = "Use-a-long-unique-password-42!"
-$env:SMARTBIN_APP_BASE_URL = "http://localhost:8501"
+$env:SMARTBIN_TOTP_ENCRYPTION_KEY = (python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+
+# Optional: enables password-reset email links and security notifications.
+$env:SMARTBIN_APP_BASE_URL = "https://your-app.example.com"
 $env:SMARTBIN_SMTP_HOST = "smtp.example.com"
 $env:SMARTBIN_SMTP_PORT = "587"
 $env:SMARTBIN_SMTP_FROM = "no-reply@example.com"
 $env:SMARTBIN_SMTP_USERNAME = "smtp-user"
 $env:SMARTBIN_SMTP_PASSWORD = "smtp-password"
-$env:SMARTBIN_TOTP_ENCRYPTION_KEY = (python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 ```
 
-The bootstrap administrator is created as email-verified on first startup. Remove the bootstrap email/password variables after setup. Keep the TOTP encryption key stable and backed up. Set `SMARTBIN_APP_BASE_URL` to the deployed HTTPS URL. The SQLite database defaults to `data/smartbin_auth.sqlite3`; use a durable private volume in production and configure SMTP/TOTP keys through the hosting secret manager.
+The bootstrap administrator is created on first startup. Remove the bootstrap email/password variables after setup. Keep the TOTP encryption key stable and backed up: changing or losing it prevents users with enabled authenticator two-factor authentication from signing in. When SMTP is configured, set `SMARTBIN_APP_BASE_URL` to the publicly reachable HTTPS app URL so password-reset links work. The SQLite database defaults to `data/smartbin_auth.sqlite3`; use a durable private volume in production and configure SMTP/TOTP keys through the hosting secret manager.
 
 Authentication and authorization are enforced by this Streamlit Python dashboard. Retained React/Vite, HTML, and `legacy_streamlit.py` frontends are unauthenticated demos and should not be exposed as production alternatives.
 

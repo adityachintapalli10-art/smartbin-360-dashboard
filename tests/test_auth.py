@@ -41,18 +41,11 @@ class AuthenticationTests(unittest.TestCase):
         patch.stopall()
         self.temp_dir.cleanup()
 
-    def _last_token(self, purpose):
-        body = self.sent_messages[-1][2]
-        match = re.search(rf"{purpose}=([A-Za-z0-9_-]+)", body)
-        self.assertIsNotNone(match)
-        return match.group(1)
-
-    def _register_verified(self, email="person@example.com", designation="Customer / General User"):
+    def _register(self, email="person@example.com", designation="Customer / General User"):
         auth.register_user(
             "Test Person", email.split("@")[0], email, "", "Strong-Person-Password-42!",
             designation, terms_accepted=True,
         )
-        self.assertTrue(auth.verify_email_token(self._last_token("verify")))
         with auth._database() as connection:
             row = connection.execute(
                 "SELECT id, terms_accepted_at FROM users WHERE email = ?", (email,)
@@ -65,8 +58,11 @@ class AuthenticationTests(unittest.TestCase):
             row = connection.execute("SELECT * FROM users WHERE email = 'admin@example.com'").fetchone()
         return auth._public_user(row)
 
-    def test_registration_verification_and_duplicate_prevention(self):
-        user_id = self._register_verified()
+    def test_registration_and_duplicate_prevention(self):
+        with patch.object(auth, "_mailer_config", side_effect=auth.AuthConfigurationError):
+            user_id = self._register()
+        with auth._database() as connection:
+            connection.execute("UPDATE users SET email_verified_at = NULL WHERE id = ?", (user_id,))
         result, user = auth.login("person@example.com", "Strong-Person-Password-42!")
         self.assertEqual(result, "ok")
         self.assertEqual(user["id"], user_id)
@@ -76,8 +72,20 @@ class AuthenticationTests(unittest.TestCase):
                 "Strong-Person-Password-42!", "Customer / General User", terms_accepted=True,
             )
 
+    def test_legacy_unverified_accounts_are_migrated(self):
+        user_id = self._register()
+        with auth._database() as connection:
+            connection.execute("UPDATE users SET email_verified_at = NULL WHERE id = ?", (user_id,))
+        auth.initialize_auth()
+        with auth._database() as connection:
+            timestamp = connection.execute(
+                "SELECT email_verified_at FROM users WHERE id = ?", (user_id,)
+            ).fetchone()["email_verified_at"]
+        self.assertIsNotNone(timestamp)
+        self.assertEqual(auth.login("person@example.com", "Strong-Person-Password-42!")[0], "ok")
+
     def test_privileged_designation_requires_database_approval(self):
-        user_id = self._register_verified("manager@example.com", "Manager")
+        user_id = self._register("manager@example.com", "Manager")
         result, user = auth.login("manager@example.com", "Strong-Person-Password-42!")
         self.assertEqual(result, "ok")
         self.assertEqual(user["role"], "public")
@@ -89,25 +97,25 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(user["role"], "manager")
 
     def test_permissions_use_database_role_not_caller_supplied_role(self):
-        user_id = self._register_verified()
+        user_id = self._register()
         auth._create_session(user_id)
         with self.assertRaises(PermissionError):
             auth.require_permission({"id": user_id, "role": "admin"}, "user_admin")
 
     def test_reset_token_is_single_use_and_revokes_sessions(self):
-        user_id = self._register_verified()
+        user_id = self._register()
         auth._create_session(user_id)
         self.assertTrue(auth.request_password_reset("person@example.com"))
-        token = self._last_token("reset")
+        token = re.search(r"reset=([A-Za-z0-9_-]+)", self.sent_messages[-1][2]).group(1)
         self.assertTrue(auth.reset_password_from_token(token, "New-Strong-Password-84!"))
         self.assertFalse(auth.reset_password_from_token(token, "Other-Strong-Password-84!"))
         self.assertIsNone(auth.current_user())
         self.assertEqual(auth.login("person@example.com", "New-Strong-Password-84!")[0], "ok")
 
     def test_expired_reset_token_is_rejected(self):
-        self._register_verified()
+        self._register()
         self.assertTrue(auth.request_password_reset("person@example.com"))
-        token = self._last_token("reset")
+        token = re.search(r"reset=([A-Za-z0-9_-]+)", self.sent_messages[-1][2]).group(1)
         with auth._database() as connection:
             connection.execute(
                 "UPDATE one_time_tokens SET expires_at = 0 WHERE token_hash = ?",
@@ -149,7 +157,7 @@ class AuthenticationTests(unittest.TestCase):
         )
 
     def test_recovery_reset_consumes_code_and_revokes_sessions(self):
-        user_id = self._register_verified()
+        user_id = self._register()
         auth._create_session(user_id)
         user = auth.current_user()
         codes, _ = auth.regenerate_recovery_codes(
