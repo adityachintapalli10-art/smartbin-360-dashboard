@@ -1,5 +1,4 @@
 import os
-import re
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -26,7 +25,7 @@ class AuthenticationTests(unittest.TestCase):
         self.sent_messages = []
         self.mailer_config = patch.object(
             auth, "_mailer_config",
-            return_value=("http://localhost:8501", 587, "smtp.example.com", "no-reply@example.com", "", ""),
+            return_value=(587, "smtp.example.com", "no-reply@example.com", "", ""),
         )
         self.mailer_config.start()
         self.email_sender = patch.object(
@@ -102,26 +101,30 @@ class AuthenticationTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             auth.require_permission({"id": user_id, "role": "admin"}, "user_admin")
 
-    def test_reset_token_is_single_use_and_revokes_sessions(self):
+    def test_legacy_password_reset_tokens_are_invalidated(self):
         user_id = self._register()
-        auth._create_session(user_id)
-        self.assertTrue(auth.request_password_reset("person@example.com"))
-        token = re.search(r"reset=([A-Za-z0-9_-]+)", self.sent_messages[-1][2]).group(1)
-        self.assertTrue(auth.reset_password_from_token(token, "New-Strong-Password-84!"))
-        self.assertFalse(auth.reset_password_from_token(token, "Other-Strong-Password-84!"))
-        self.assertIsNone(auth.current_user())
-        self.assertEqual(auth.login("person@example.com", "New-Strong-Password-84!")[0], "ok")
-
-    def test_expired_reset_token_is_rejected(self):
-        self._register()
-        self.assertTrue(auth.request_password_reset("person@example.com"))
-        token = re.search(r"reset=([A-Za-z0-9_-]+)", self.sent_messages[-1][2]).group(1)
+        token_hash = auth._secret_hash("old-email-reset-token")
         with auth._database() as connection:
             connection.execute(
-                "UPDATE one_time_tokens SET expires_at = 0 WHERE token_hash = ?",
-                (auth._secret_hash(token),),
+                """CREATE TABLE one_time_tokens (
+                   token_hash TEXT PRIMARY KEY,
+                   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                   purpose TEXT NOT NULL,
+                   created_at INTEGER NOT NULL,
+                   expires_at INTEGER NOT NULL,
+                   used_at INTEGER
+                )"""
             )
-        self.assertFalse(auth.reset_password_from_token(token, "New-Strong-Password-84!"))
+            connection.execute(
+                "INSERT INTO one_time_tokens VALUES (?, ?, 'reset_password', 1, 9999999999, NULL)",
+                (token_hash, user_id),
+            )
+        auth.initialize_auth()
+        with auth._database() as connection:
+            used_at = connection.execute(
+                "SELECT used_at FROM one_time_tokens WHERE token_hash = ?", (token_hash,)
+            ).fetchone()["used_at"]
+        self.assertIsNotNone(used_at)
 
     def test_totp_and_recovery_code_are_single_use(self):
         admin = self._admin()

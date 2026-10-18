@@ -7,7 +7,6 @@ import streamlit as st
 
 st.set_page_config(page_title="EcoBin AI + SmartBin 360", page_icon="♻️", layout="wide")
 auth.initialize_auth()
-auth.handle_auth_tokens()
 user = auth.current_user()
 if user is None:
     auth.render_authentication()

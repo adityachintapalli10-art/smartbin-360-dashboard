@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote
 
 from cryptography.fernet import Fernet, InvalidToken
 import streamlit as st
@@ -27,7 +27,6 @@ LOGGER = logging.getLogger(__name__)
 PASSWORD_ITERATIONS = 600_000
 SESSION_IDLE_SECONDS = 30 * 60
 SESSION_ABSOLUTE_SECONDS = 12 * 60 * 60
-TOKEN_LIFETIME_SECONDS = 60 * 60
 RATE_WINDOW_SECONDS = 15 * 60
 ROLE_VALUES = {"public", "worker", "manager", "hr", "admin"}
 DEFAULT_DESIGNATIONS = (
@@ -202,14 +201,6 @@ def _create_tables(connection: sqlite3.Connection) -> None:
             terms_accepted_at INTEGER,
             created_at INTEGER NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS one_time_tokens (
-            token_hash TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            purpose TEXT NOT NULL CHECK (purpose = 'reset_password'),
-            created_at INTEGER NOT NULL,
-            expires_at INTEGER NOT NULL,
-            used_at INTEGER
-        );
         CREATE TABLE IF NOT EXISTS recovery_codes (
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             code_hash TEXT NOT NULL,
@@ -231,17 +222,20 @@ def _create_tables(connection: sqlite3.Connection) -> None:
             attempts INTEGER NOT NULL,
             PRIMARY KEY (bucket, subject_hash)
         );
-        CREATE INDEX IF NOT EXISTS idx_tokens_user ON one_time_tokens(user_id, purpose);
         CREATE INDEX IF NOT EXISTS idx_sessions_user ON auth_sessions(user_id);
         """
     )
     connection.execute(
         "UPDATE users SET email_verified_at = COALESCE(email_verified_at, created_at)"
     )
-    connection.execute(
-        "UPDATE one_time_tokens SET used_at = COALESCE(used_at, ?) WHERE purpose = 'verify_email'",
-        (int(time.time()),),
-    )
+    legacy_token_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'one_time_tokens'"
+    ).fetchone()
+    if legacy_token_table:
+        connection.execute(
+            "UPDATE one_time_tokens SET used_at = COALESCE(used_at, ?)",
+            (int(time.time()),),
+        )
     connection.executemany(
         "INSERT OR IGNORE INTO designations(name, role) VALUES (?, ?)",
         DEFAULT_DESIGNATIONS,
@@ -329,13 +323,12 @@ def _consume_rate_limit(bucket: str, subject: str, limit: int, window: int = RAT
         return False
 
 
-def _mailer_config() -> tuple[str, int, str, str, str, str]:
-    base_url = os.getenv("SMARTBIN_APP_BASE_URL", "").strip().rstrip("/")
+def _mailer_config() -> tuple[int, str, str, str, str]:
     host = os.getenv("SMARTBIN_SMTP_HOST", "").strip()
     sender = os.getenv("SMARTBIN_SMTP_FROM", "").strip()
-    if not base_url or not host or not sender:
+    if not host or not sender:
         raise AuthConfigurationError(
-            "Password-reset and security emails are not configured. Set SMARTBIN_APP_BASE_URL, SMARTBIN_SMTP_HOST, and SMARTBIN_SMTP_FROM."
+            "Security email notifications are not configured. Set SMARTBIN_SMTP_HOST and SMARTBIN_SMTP_FROM."
         )
     if not _valid_email(sender):
         raise AuthConfigurationError("SMARTBIN_SMTP_FROM must be a valid email address.")
@@ -346,7 +339,6 @@ def _mailer_config() -> tuple[str, int, str, str, str, str]:
     if not 1 <= port <= 65535:
         raise AuthConfigurationError("SMARTBIN_SMTP_PORT must be between 1 and 65535.")
     return (
-        base_url,
         port,
         host,
         sender,
@@ -355,15 +347,8 @@ def _mailer_config() -> tuple[str, int, str, str, str, str]:
     )
 
 
-def _token_url(base_url: str, parameter: str, token: str) -> str:
-    parts = urlsplit(base_url)
-    query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    query[parameter] = token
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
-
-
 def _send_email(recipient: str, subject: str, body: str) -> None:
-    _, port, host, sender, username, password = _mailer_config()
+    port, host, sender, username, password = _mailer_config()
     message = EmailMessage()
     message["From"] = sender
     message["To"] = recipient
@@ -382,20 +367,6 @@ def _send_email(recipient: str, subject: str, body: str) -> None:
             if username:
                 server.login(username, password)
             server.send_message(message)
-
-
-def _issue_token(connection: sqlite3.Connection, user_id: int, purpose: str) -> str:
-    now = int(time.time())
-    connection.execute(
-        "UPDATE one_time_tokens SET used_at = ? WHERE user_id = ? AND purpose = ? AND used_at IS NULL",
-        (now, user_id, purpose),
-    )
-    token = secrets.token_urlsafe(32)
-    connection.execute(
-        "INSERT INTO one_time_tokens(token_hash, user_id, purpose, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-        (_secret_hash(token), user_id, purpose, now, now + TOKEN_LIFETIME_SECONDS),
-    )
-    return token
 
 
 def register_user(
@@ -721,71 +692,11 @@ def disable_designation(actor: dict, name: str) -> None:
         connection.execute("UPDATE designations SET enabled = 0 WHERE name = ?", (name,))
 
 
-def request_password_reset(email: str) -> bool:
-    email = _normalize_email(email)
-    if _consume_rate_limit("password_reset", email or "empty", 3, 60 * 60):
-        return False
-    if not _valid_email(email):
-        return False
-    try:
-        base_url, _, _, _, _, _ = _mailer_config()
-        with _database() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            user = connection.execute(
-                "SELECT id, full_name FROM users WHERE email = ? AND enabled = 1",
-                (email,),
-            ).fetchone()
-            if not user:
-                return True
-            token = _issue_token(connection, user["id"], "reset_password")
-            link = _token_url(base_url, "reset", token)
-            _send_email(
-                email,
-                "Reset your Smart Waste Dashboard password",
-                f"Hello {user['full_name']},\n\nUse this one-time link within one hour to reset your password:\n{link}\n\nIf you did not request this change, ignore this message.",
-            )
-    except (AuthConfigurationError, OSError, smtplib.SMTPException) as exc:
-        LOGGER.warning("Password-reset message could not be delivered (%s).", type(exc).__name__)
-    return True
-
-
 def _replace_password(connection: sqlite3.Connection, user_id: int, password: str) -> str:
     connection.execute("UPDATE users SET password_hash = ? WHERE id = ?", (_hash_password(password), user_id))
     connection.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
-    connection.execute(
-        "UPDATE one_time_tokens SET used_at = ? WHERE user_id = ? AND purpose = 'reset_password' AND used_at IS NULL",
-        (int(time.time()), user_id),
-    )
     email_row = connection.execute("SELECT email FROM users WHERE id = ?", (user_id,)).fetchone()
     return email_row["email"]
-
-
-def reset_password_from_token(token: str, password: str) -> bool:
-    rate_subject = st.session_state.get("password_reset_rate_subject")
-    if not rate_subject:
-        rate_subject = secrets.token_hex(16)
-        st.session_state["password_reset_rate_subject"] = rate_subject
-    if _consume_rate_limit("password_reset_submit", f"{rate_subject}:{_secret_hash(token)}", 5):
-        return False
-    if (error := password_error(password)) is not None:
-        raise AuthError(error)
-    now = int(time.time())
-    with _database() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        token_row = connection.execute(
-            """SELECT user_id FROM one_time_tokens WHERE token_hash = ?
-               AND purpose = 'reset_password' AND used_at IS NULL AND expires_at > ?""",
-            (_secret_hash(token), now),
-        ).fetchone()
-        if not token_row:
-            return False
-        connection.execute(
-            "UPDATE one_time_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL",
-            (now, _secret_hash(token)),
-        )
-        recipient = _replace_password(connection, token_row["user_id"], password)
-    _send_security_notice(recipient, "Your Smart Waste Dashboard password was changed.")
-    return True
 
 
 def reset_password_with_recovery(email: str, code: str, password: str) -> tuple[bool, bool]:
@@ -962,40 +873,6 @@ def remaining_recovery_codes(user_id: int) -> int:
     return row["count"]
 
 
-def _handle_query_tokens() -> None:
-    reset_token = st.query_params.get("reset")
-    if reset_token:
-        st.title("Reset your password")
-        st.caption("Choose a new strong password. This one-time link expires after one hour.")
-        with st.form("token_password_reset"):
-            password = st.text_input("New password", type="password")
-            confirmation = st.text_input("Confirm new password", type="password")
-            submitted = st.form_submit_button("Reset password")
-        if submitted:
-            if password != confirmation:
-                st.error("The passwords do not match.")
-            else:
-                try:
-                    changed = reset_password_from_token(reset_token, password)
-                except AuthError as exc:
-                    st.error(str(exc))
-                except (sqlite3.Error, OSError, smtplib.SMTPException) as exc:
-                    LOGGER.error("Password reset failed (%s).", type(exc).__name__)
-                    st.error("We could not complete the password reset. Request a new link and try again.")
-                else:
-                    del st.query_params["reset"]
-                    if changed:
-                        st.success("Password changed. Existing sessions have been signed out. You can now sign in.")
-                        st.session_state.pop("auth_session_token", None)
-                        st.session_state.pop("authenticated_user", None)
-                        st.session_state.pop("recovery_codes_pending", None)
-                        st.session_state.pop("totp_setup_pending", None)
-                    else:
-                        st.error("This reset link is invalid, expired, or already used. Request a new one.")
-                    st.rerun()
-        st.stop()
-
-
 def _render_recovery_settings(user: dict) -> None:
     with st.sidebar.expander("Account security & recovery"):
         st.caption(f'{user["email"]} · {user["designation"]} · {user["role"].title()}')
@@ -1101,6 +978,11 @@ def render_authenticated_sidebar(user: dict) -> None:
     st.sidebar.markdown("---")
     st.sidebar.markdown(f'**Signed in:** {user["full_name"]}')
     st.sidebar.caption(f'{user["designation"]} · {user["role"].title()}')
+    if remaining_recovery_codes(user["id"]) == 0:
+        st.sidebar.warning(
+            "After signing in, open Account security & recovery, generate your recovery codes, "
+            "then copy or download them and store them safely. They are shown only once."
+        )
     _render_recovery_settings(user)
     if st.sidebar.button("Sign out", use_container_width=True):
         _end_session()
@@ -1248,21 +1130,11 @@ def _render_registration() -> None:
 
 
 def _render_recovery() -> None:
-    st.markdown("#### Request a password reset")
-    with st.form("forgot_password_form"):
-        email = st.text_input("Registered email address")
-        reset_submitted = st.form_submit_button("Send reset link")
-    if reset_submitted:
-        try:
-            request_password_reset(email)
-        except (sqlite3.Error, OSError) as exc:
-            LOGGER.error("Password-reset request failed (%s).", type(exc).__name__)
-            st.error("The request could not be completed. Please try again.")
-        else:
-            st.info("If an account matches that address and mail is configured, a reset link will be sent.")
-
-    st.markdown("#### Reset using a recovery code")
-    st.caption("Recovery codes are single-use. Enter one with the account email, then choose a new password.")
+    st.markdown("#### Recover access with a recovery code")
+    st.caption(
+        "Enter your account email and an unused recovery code to choose a new password. "
+        "Each recovery code can only be used once."
+    )
     with st.form("recovery_code_reset_form"):
         recovery_email = st.text_input("Account email", key="recovery_email")
         recovery_code = st.text_input("Unused recovery code", key="recovery_code", autocomplete="off")
@@ -1292,10 +1164,9 @@ def _render_recovery() -> None:
 
 def render_authentication() -> None:
     initialize_auth()
-    handle_auth_tokens()
     st.title("EcoBin AI + SmartBin 360")
     st.caption("Sign in to access your role-authorized smart waste dashboard.")
-    signin_tab, register_tab, recovery_tab = st.tabs(["Sign in", "Create account", "Recover account"])
+    signin_tab, register_tab, recovery_tab = st.tabs(["Sign in", "Create account", "Use recovery code"])
     with signin_tab:
         _render_login()
     with register_tab:
@@ -1304,13 +1175,8 @@ def render_authentication() -> None:
         _render_recovery()
 
 
-def handle_auth_tokens() -> None:
-    _handle_query_tokens()
-
-
 def authenticate_request() -> dict | None:
     initialize_auth()
-    handle_auth_tokens()
     user = current_user()
     if user is None:
         render_authentication()
