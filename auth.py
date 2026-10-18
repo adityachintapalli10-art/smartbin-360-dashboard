@@ -570,8 +570,8 @@ ROLE_PERMISSIONS = {
     },
     "manager": {
         "dashboard", "map", "fleet", "routes", "forecast", "classifier", "alerts",
-        "analytics", "telemetry", "tasks", "reports", "manage_bins", "collect_bins",
-        "control_hardware", "dispatch", "simulate_telemetry", "export",
+        "analytics", "telemetry", "tasks", "reports", "user_admin", "manage_bins",
+        "collect_bins", "control_hardware", "dispatch", "simulate_telemetry", "export",
     },
     "hr": {"dashboard", "reports"},
     "worker": {

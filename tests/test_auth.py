@@ -101,6 +101,22 @@ class AuthenticationTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             auth.require_permission({"id": user_id, "role": "admin"}, "user_admin")
 
+    def test_manager_and_admin_have_full_access(self):
+        user_id = self._register("manager@example.com", "Manager")
+        admin = self._admin()
+        auth._create_session(admin["id"])
+        auth.approve_designation(admin, user_id)
+
+        result, manager = auth.login("manager@example.com", "Strong-Person-Password-42!")
+        self.assertEqual(result, "ok")
+        auth._create_session(manager["id"])
+
+        self.assertEqual(auth.ROLE_PERMISSIONS["manager"], auth.ROLE_PERMISSIONS["admin"])
+        for permission in auth.ROLE_PERMISSIONS["admin"]:
+            with self.subTest(permission=permission):
+                self.assertTrue(auth.has_permission(manager, permission))
+                auth.require_permission(manager, permission)
+
     def test_legacy_password_reset_tokens_are_invalidated(self):
         user_id = self._register()
         token_hash = auth._secret_hash("old-email-reset-token")

@@ -10,9 +10,49 @@ st.markdown(
     """
     <style>
     .stApp { background: #070b12; color: #e2e8f0; }
-    [data-testid="stMetric"] { background: #0d1627; border: 1px solid #1e293b; padding: 14px; border-radius: 12px; }
+    [data-testid="stMetric"] {
+        background: linear-gradient(145deg, #101b2d, #0d1627);
+        border: 1px solid #1e293b;
+        padding: 14px;
+        border-radius: 12px;
+        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-3px);
+        border-color: #2f855a;
+        box-shadow: 0 10px 24px #00000030;
+    }
     [data-testid="stSidebar"] { background: #0b1322; }
     h1, h2, h3 { color: #f1f5f9; }
+    [data-testid="stTabs"] [role="tablist"] { gap: 6px; border-bottom: 1px solid #1e293b; }
+    [data-testid="stTabs"] button[role="tab"] {
+        border-radius: 8px 8px 0 0;
+        color: #94a3b8;
+        transition: color 160ms ease, background-color 160ms ease;
+    }
+    [data-testid="stTabs"] button[role="tab"]:hover { color: #a7f3d0; background: #10251f; }
+    [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: #6ee7b7;
+        border-bottom-color: #34d399;
+    }
+    [data-testid="stButton"] button, [data-testid="stFormSubmitButton"] button,
+    [data-testid="stPageLink"] a {
+        transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+    }
+    [data-testid="stButton"] button:hover, [data-testid="stFormSubmitButton"] button:hover,
+    [data-testid="stPageLink"] a:hover {
+        transform: translateY(-1px);
+        border-color: #34d399;
+        box-shadow: 0 5px 16px #00000025;
+    }
+    [data-testid="stAppViewContainer"] button:focus-visible,
+    [data-testid="stAppViewContainer"] a:focus-visible,
+    [data-testid="stAppViewContainer"] input:focus-visible,
+    [data-testid="stAppViewContainer"] textarea:focus-visible {
+        outline: 2px solid #34d399;
+        outline-offset: 2px;
+    }
+    [data-testid="stDataFrame"] { border: 1px solid #1e293b; border-radius: 10px; overflow: hidden; }
     @keyframes dashboard-enter {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: translateY(0); }
@@ -23,6 +63,11 @@ st.markdown(
     @media (prefers-reduced-motion: reduce) {
         [data-testid="stMainBlockContainer"] {
             animation: none;
+        }
+        [data-testid="stMetric"], [data-testid="stTabs"] button[role="tab"],
+        [data-testid="stButton"] button, [data-testid="stFormSubmitButton"] button,
+        [data-testid="stPageLink"] a {
+            transition: none;
         }
     }
     </style>
