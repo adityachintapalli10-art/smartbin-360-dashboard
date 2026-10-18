@@ -11,7 +11,7 @@ pip install -r requirements.txt
 streamlit run server.py
 ```
 
-Streamlit opens at `http://localhost:8501`. Sample classifier results and demand forecasts are labeled as demonstrations, not predictions from a trained model.
+Streamlit opens at `http://localhost:8501`. The **SmartBin 360** menu section summarizes fleet status, and its repository link opens the original GitHub project. Sample classifier results and demand forecasts are labeled as demonstrations, not predictions from a trained model.
 
 ## Authentication setup
 

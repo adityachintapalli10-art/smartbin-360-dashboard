@@ -83,6 +83,11 @@ with st.sidebar:
     region = st.selectbox("Active region", ["All", "Tirupati Town", "MBU Campus Zone", "Alipiri Circle"])
     role = user["role"]
     st.caption(f'{user["full_name"]} · {user["designation"]} · {role.title()}')
+    st.page_link(
+        "https://github.com/adityachintapalli10-art/smartbin-360",
+        label="SmartBin 360 repository",
+        icon=":material/open_in_new:",
+    )
     st.divider()
     st.caption("IoT fleet grid")
     st.progress(1.0, text="100% online")
@@ -123,6 +128,7 @@ avg_fill = round(sum(item["fill"] for item in bins) / len(bins))
 avg_battery = round(sum(item["battery"] for item in bins) / len(bins))
 
 tab_definitions = [
+    ("smartbin360", "SmartBin 360", "dashboard"),
     ("overview", "Overview", "dashboard"),
     ("map", "GIS live map", "map"),
     ("fleet", "Dustbin fleet", "fleet"),
@@ -144,6 +150,40 @@ section_tabs = {
         st.tabs([label for _, label, _ in visible_tabs]),
     )
 }
+
+if "smartbin360" in section_tabs:
+    with section_tabs["smartbin360"]:
+        st.subheader("SmartBin 360 operations")
+        st.caption("Quick view of the connected SmartBin fleet and its operational status.")
+        smartbin_cols = st.columns(4)
+        smartbin_cols[0].metric("Connected bins", len(bins))
+        smartbin_cols[1].metric("Needs collection", sum(item["fill"] >= 80 for item in bins))
+        smartbin_cols[2].metric("Average solar battery", f"{avg_battery}%")
+        smartbin_cols[3].metric(
+            "Sensor alerts",
+            sum(item["odor"] >= 150 or item["battery"] < 30 for item in bins),
+        )
+        st.markdown("#### Fleet status")
+        st.dataframe(
+            [
+                {
+                    "Bin": item["id"],
+                    "Location": item["name"],
+                    "Area": item["area"],
+                    "Fill": f'{item["fill"]}%',
+                    "Battery": f'{item["battery"]}%',
+                    "Status": "Collection needed" if item["fill"] >= 80 else "Online",
+                }
+                for item in visible_bins
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+        st.page_link(
+            "https://github.com/adityachintapalli10-art/smartbin-360",
+            label="Open the SmartBin 360 source repository",
+            icon=":material/open_in_new:",
+        )
 
 if "overview" in section_tabs:
     with section_tabs["overview"]:
