@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 
-st.set_page_config(page_title="EcoBin AI | Smart Waste Dashboard", page_icon="♻️", layout="wide")
+st.set_page_config(page_title="EcoBin AI + SmartBin 360", page_icon="♻️", layout="wide")
 
 INITIAL_BINS = [
     {"id": "BIN-042", "name": "MBU Campus Quad", "area": "MBU Campus Zone", "lat": 13.6288, "lon": 79.4192, "fill": 92, "battery": 45, "odor": 185, "temp": 34, "waste": "Plastic & Wet Waste", "lock": "Locked", "worker": "Ramesh Kumar", "cleaned": "18 hrs ago"},
@@ -13,6 +13,18 @@ INITIAL_BINS = [
     {"id": "BIN-011", "name": "Railway Station Platform 1", "area": "Tirupati Town", "lat": 13.6260, "lon": 79.4150, "fill": 88, "battery": 80, "odor": 210, "temp": 33, "waste": "Food & Wet Waste", "lock": "Locked", "worker": "K. Venkatesh", "cleaned": "14 hrs ago"},
     {"id": "BIN-025", "name": "Alipiri Checkpoint", "area": "Alipiri Circle", "lat": 13.6500, "lon": 79.4000, "fill": 45, "battery": 88, "odor": 50, "temp": 27, "waste": "Plastic & Bottles", "lock": "Unlocked", "worker": "Unassigned", "cleaned": "3 hrs ago"},
     {"id": "BIN-033", "name": "Kapila Theertham Entrance", "area": "Alipiri Circle", "lat": 13.6420, "lon": 79.4100, "fill": 82, "battery": 72, "odor": 140, "temp": 31, "waste": "E-Waste & Metals", "lock": "Locked", "worker": "Anil Reddy", "cleaned": "12 hrs ago"},
+    {"id": "BIN-101", "name": "Central Library Quad", "area": "MBU Campus Zone", "lat": 13.6288, "lon": 79.4192, "fill": 88, "battery": 92, "odor": 72, "temp": 29, "waste": "Recyclable", "lock": "Locked", "worker": "Rajesh Kumar", "cleaned": "2 mins ago"},
+    {"id": "BIN-102", "name": "Engineering Block A", "area": "MBU Campus Zone", "lat": 13.6302, "lon": 79.4180, "fill": 97, "battery": 84, "odor": 120, "temp": 32, "waste": "Dry Waste", "lock": "Locked", "worker": "Rajesh Kumar", "cleaned": "Just now"},
+    {"id": "BIN-103", "name": "Student Cafeteria South", "area": "MBU Campus Zone", "lat": 13.6275, "lon": 79.4210, "fill": 42, "battery": 99, "odor": 68, "temp": 28, "waste": "Wet Waste", "lock": "Unlocked", "worker": "Unassigned", "cleaned": "5 mins ago"},
+    {"id": "BIN-104", "name": "Science Auditorium Lobby", "area": "MBU Campus Zone", "lat": 13.6315, "lon": 79.4225, "fill": 65, "battery": 91, "odor": 84, "temp": 29, "waste": "Recyclable", "lock": "Locked", "worker": "K. Venkatesh", "cleaned": "12 mins ago"},
+    {"id": "BIN-105", "name": "Hostel Block 3 Gate", "area": "MBU Campus Zone", "lat": 13.6260, "lon": 79.4170, "fill": 99, "battery": 76, "odor": 225, "temp": 35, "waste": "Hazardous", "lock": "Locked", "worker": "Anil Reddy", "cleaned": "1 min ago"},
+    {"id": "BIN-106", "name": "Sports Stadium Entrance", "area": "MBU Campus Zone", "lat": 13.6330, "lon": 79.4200, "fill": 22, "battery": 100, "odor": 35, "temp": 27, "waste": "Dry Waste", "lock": "Unlocked", "worker": "Unassigned", "cleaned": "15 mins ago"},
+    {"id": "BIN-107", "name": "Admin Building Porch", "area": "MBU Campus Zone", "lat": 13.6295, "lon": 79.4165, "fill": 54, "battery": 95, "odor": 52, "temp": 28, "waste": "Recyclable", "lock": "Locked", "worker": "Srinivas V.", "cleaned": "8 mins ago"},
+    {"id": "BIN-108", "name": "Medical Center West", "area": "MBU Campus Zone", "lat": 13.6250, "lon": 79.4190, "fill": 91, "battery": 88, "odor": 160, "temp": 31, "waste": "Hazardous", "lock": "Locked", "worker": "Ramesh Kumar", "cleaned": "3 mins ago"},
+    {"id": "BIN-109", "name": "Computer Science Lab", "area": "MBU Campus Zone", "lat": 13.6310, "lon": 79.4185, "fill": 34, "battery": 96, "odor": 30, "temp": 27, "waste": "Dry Waste", "lock": "Unlocked", "worker": "Unassigned", "cleaned": "20 mins ago"},
+    {"id": "BIN-110", "name": "Campus Main Gate", "area": "MBU Campus Zone", "lat": 13.6270, "lon": 79.4150, "fill": 78, "battery": 90, "odor": 89, "temp": 30, "waste": "Recyclable", "lock": "Locked", "worker": "K. Venkatesh", "cleaned": "6 mins ago"},
+    {"id": "BIN-111", "name": "Architecture Studio", "area": "MBU Campus Zone", "lat": 13.6322, "lon": 79.4215, "fill": 12, "battery": 98, "odor": 22, "temp": 27, "waste": "Wet Waste", "lock": "Unlocked", "worker": "Unassigned", "cleaned": "25 mins ago"},
+    {"id": "BIN-112", "name": "Business School Atrium", "area": "MBU Campus Zone", "lat": 13.6280, "lon": 79.4230, "fill": 96, "battery": 82, "odor": 130, "temp": 32, "waste": "Dry Waste", "lock": "Locked", "worker": "Rajesh Kumar", "cleaned": "Just now"},
 ]
 
 TASKS = [
@@ -30,6 +42,12 @@ if "reports" not in st.session_state:
         {"Report": "CMP-802", "Bin": "BIN-018", "Issue": "Odor issue near bus waiting bench", "Reported by": "Vikram R.", "Time": "1h ago", "Status": "Resolved"},
         {"Report": "CMP-803", "Bin": "BIN-011", "Issue": "Solar panel blocked by overhead banner", "Reported by": "Karthik M.", "Time": "3h ago", "Status": "Pending"},
     ]
+if "resolved_alerts" not in st.session_state:
+    st.session_state.resolved_alerts = set()
+if "classification_result" not in st.session_state:
+    st.session_state.classification_result = None
+if "completed_tasks" not in st.session_state:
+    st.session_state.completed_tasks = set()
 if "toast" in st.session_state:
     st.toast(st.session_state.pop("toast"))
 
@@ -45,13 +63,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("♻️ EcoBin AI")
-st.caption("SMART SOLAR WASTE DASHBOARD · ESP32 TELEMETRY GRID")
+st.title("♻️ EcoBin AI + SmartBin 360")
+st.caption("UNIFIED SMART WASTE DASHBOARD · LIVE FLEET + IOT TELEMETRY")
 
 with st.sidebar:
     st.header("Control center")
     region = st.selectbox("Active region", ["All", "Tirupati Town", "MBU Campus Zone", "Alipiri Circle"])
-    role = st.selectbox("Workspace role", ["Manager", "Worker", "Public"])
+    role = st.selectbox("Workspace role", ["Manager", "Worker", "Public", "Administrator", "Campus Manager"])
     st.divider()
     st.caption("IoT fleet grid")
     st.progress(1.0, text="100% online")
@@ -60,7 +78,12 @@ with st.sidebar:
             new_id = st.text_input("Bin serial code", placeholder="BIN-099")
             new_area = st.selectbox("Region / zone", ["MBU Campus Zone", "Tirupati Town", "Alipiri Circle"])
             if st.button("Pair & register", width="stretch"):
-                bin_id = new_id.strip().upper() or f"BIN-{len(st.session_state.bins) + 15:03}"
+                numeric_ids = [
+                    int(item["id"][4:])
+                    for item in st.session_state.bins
+                    if item["id"].startswith("BIN-") and item["id"][4:].isdigit()
+                ]
+                bin_id = new_id.strip().upper() or f"BIN-{max(numeric_ids, default=0) + 1:03}"
                 if any(item["id"] == bin_id for item in st.session_state.bins):
                     st.error(f"{bin_id} already exists.")
                 else:
@@ -85,8 +108,8 @@ alerts = sum(item["fill"] >= 80 for item in bins)
 avg_fill = round(sum(item["fill"] for item in bins) / len(bins))
 avg_battery = round(sum(item["battery"] for item in bins) / len(bins))
 
-overview, map_tab, routes_tab, analytics_tab, telemetry_tab, tasks_tab, reports_tab = st.tabs(
-    ["Overview", "GIS live map", "Collection routes", "Analytics & CO₂", "ESP32 telemetry", "Field staff tasks", "Public reports"]
+overview, map_tab, fleet_tab, routes_tab, forecast_tab, classifier_tab, alerts_tab, analytics_tab, telemetry_tab, tasks_tab, reports_tab, admin_tab = st.tabs(
+    ["Overview", "GIS live map", "Dustbin fleet", "Collection routes", "AI demand", "Waste classifier", "Alerts center", "Analytics & CO₂", "ESP32 simulator", "Field staff tasks", "Public reports", "RBAC & settings"]
 )
 
 with overview:
@@ -153,8 +176,79 @@ with overview:
 with map_tab:
     st.subheader("Municipal GIS mapping & GPS fleet grid")
     st.caption("Live fill-level status for registered bins in the selected area.")
-    st.map(pd.DataFrame([{"lat": b["lat"], "lon": b["lon"], "fill": b["fill"]} for b in visible_bins]), size=150, color="#10b981")
-    st.dataframe(pd.DataFrame(visible_bins)[["id", "name", "area", "fill", "battery", "odor", "waste", "lock"]], hide_index=True, width="stretch")
+    map_search = st.text_input("Search map by bin, location, or waste category", key="map_search").casefold()
+    map_status = st.selectbox(
+        "Show fill status",
+        ["All statuses", "Critical (95–100%)", "High (80–94%)", "Medium (50–79%)", "Normal (0–49%)"],
+        key="map_status",
+    )
+    map_bins = [b for b in visible_bins if map_search in f'{b["id"]} {b["name"]} {b["waste"]}'.casefold()]
+    status_ranges = {
+        "Critical (95–100%)": lambda fill: fill >= 95,
+        "High (80–94%)": lambda fill: 80 <= fill < 95,
+        "Medium (50–79%)": lambda fill: 50 <= fill < 80,
+        "Normal (0–49%)": lambda fill: fill < 50,
+    }
+    if map_status in status_ranges:
+        map_bins = [b for b in map_bins if status_ranges[map_status](b["fill"])]
+    if map_bins:
+        st.map(pd.DataFrame([{"lat": b["lat"], "lon": b["lon"], "fill": b["fill"]} for b in map_bins]), size=150, color="#10b981")
+    else:
+        st.info("No bins match the map filters.")
+    st.dataframe(pd.DataFrame(map_bins)[["id", "name", "area", "fill", "battery", "odor", "waste", "lock"]], hide_index=True, width="stretch")
+
+with fleet_tab:
+    st.subheader("SmartBin 360 · Dustbin fleet management")
+    st.caption("Search the merged fleet, filter by waste category, inspect telemetry, and export a CSV report.")
+    fleet_search = st.text_input("Search bin ID, location, category, or area", key="fleet_search").casefold()
+    categories = ["All categories"] + sorted({b["waste"] for b in bins})
+    fleet_category = st.selectbox("Waste category", categories)
+    fleet_bins = [
+        b for b in bins
+        if fleet_search in f'{b["id"]} {b["name"]} {b["waste"]} {b["area"]}'.casefold()
+        and (fleet_category == "All categories" or b["waste"] == fleet_category)
+    ]
+    fleet_frame = pd.DataFrame([
+        {
+            "Bin ID": b["id"], "Location": b["name"], "Area": b["area"], "Waste category": b["waste"],
+            "Fill (%)": b["fill"], "Solar battery (%)": b["battery"], "Odor (PPM)": b["odor"],
+            "Last cleaned": b["cleaned"], "Status": "Critical" if b["fill"] >= 95 else "High" if b["fill"] >= 80 else "Warning" if b["fill"] >= 50 else "Normal",
+        } for b in fleet_bins
+    ])
+    st.dataframe(fleet_frame, hide_index=True, width="stretch")
+    st.download_button(
+        "Export filtered fleet CSV",
+        data=fleet_frame.to_csv(index=False).encode("utf-8"),
+        file_name="smartbin-fleet-report.csv",
+        mime="text/csv",
+        disabled=fleet_frame.empty,
+    )
+    if role in {"Manager", "Administrator", "Campus Manager"}:
+        with st.expander("Register a bin with GPS coordinates and waste category"):
+            with st.form("fleet_add_bin"):
+                add_cols = st.columns(2)
+                add_id = add_cols[0].text_input("Bin serial code", placeholder="BIN-120")
+                add_name = add_cols[1].text_input("Location", placeholder="Campus location")
+                add_area = add_cols[0].selectbox("Area", ["MBU Campus Zone", "Tirupati Town", "Alipiri Circle"], key="fleet_add_area")
+                add_waste = add_cols[1].selectbox("Waste category", ["Wet Waste", "Dry Waste", "Recyclable", "Hazardous", "Organic & Food", "E-Waste & Metals"])
+                add_lat, add_lon = st.columns(2)
+                lat = add_lat.number_input("Latitude", value=13.6288, format="%.6f")
+                lon = add_lon.number_input("Longitude", value=79.4192, format="%.6f")
+                add_submitted = st.form_submit_button("Register smart bin")
+            if add_submitted:
+                bin_id = add_id.strip().upper()
+                if not bin_id or not add_name.strip():
+                    st.error("Enter a bin serial code and location.")
+                elif any(item["id"] == bin_id for item in bins):
+                    st.error(f"{bin_id} already exists.")
+                else:
+                    bins.append({
+                        "id": bin_id, "name": add_name.strip(), "area": add_area, "lat": lat, "lon": lon,
+                        "fill": 10, "battery": 100, "odor": 18, "temp": 27, "waste": add_waste,
+                        "lock": "Locked", "worker": "Unassigned", "cleaned": "Just now",
+                    })
+                    st.session_state.toast = f"{bin_id} registered successfully."
+                    st.rerun()
 
 with routes_tab:
     st.subheader("AI dynamic route optimization")
@@ -172,6 +266,99 @@ with routes_tab:
         hide_index=True,
         width="stretch",
     )
+    if st.button("Dispatch Truck Alpha"):
+        st.toast("Truck Alpha dispatched along the optimized collection route.")
+
+with forecast_tab:
+    st.subheader("AI fill-level prediction & demand forecasting")
+    st.caption("Sample forecast based on the source dashboard's demand history; this is a demo, not a trained model.")
+    forecast_cols = st.columns([2, 1])
+    with forecast_cols[0]:
+        demand = pd.DataFrame(
+            {"Predicted waste volume (kg)": [420, 380, 510, 590, 720, 840, 690]},
+            index=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        )
+        st.line_chart(demand, color="#10b981")
+    with forecast_cols[1]:
+        st.markdown("#### Early warnings & insights")
+        st.warning("Cafeteria demand: sample history predicts a Friday lunch wet-waste surge. Consider a pre-dispatch.")
+        st.info("Hostel Block 3: BIN-105 is near capacity. Increase collection frequency during weekends.")
+        st.success(f"Fleet solar battery average is {avg_battery}%. {sum(b['battery'] < 30 for b in bins)} bin(s) need a battery check.")
+
+with classifier_tab:
+    st.subheader("AI waste classification & sustainability scanner")
+    st.caption("Sample classifications are simulated demonstrations, not a trained computer-vision model.")
+    sample_items = [
+        ("Plastic Bottle", "Recyclable", 98.4, "🥤"),
+        ("Banana Peel", "Wet Waste", 95.1, "🍌"),
+        ("Used Battery", "Hazardous", 99.2, "🔋"),
+        ("Cardboard Box", "Dry Waste", 96.8, "📦"),
+    ]
+    sample_cols = st.columns(4)
+    for col, (item, category, confidence, emoji) in zip(sample_cols, sample_items):
+        if col.button(f"{emoji} {item}", key=f"classify_{item}", width="stretch"):
+            st.session_state.classification_result = {
+                "item": item, "category": category, "confidence": confidence,
+                "source": "Sample demonstration",
+            }
+    upload_col, result_col = st.columns(2)
+    with upload_col:
+        uploaded_image = st.file_uploader("Upload a waste image", type=["png", "jpg", "jpeg", "webp"])
+        if uploaded_image:
+            st.image(uploaded_image, caption="Uploaded image · choose a category to save a demo label", width="stretch")
+            chosen_category = st.selectbox("Demo category", ["Wet Waste", "Dry Waste", "Recyclable", "Hazardous"], key="uploaded_category")
+            if st.button("Save demo classification"):
+                st.session_state.classification_result = {
+                    "item": uploaded_image.name, "category": chosen_category,
+                    "confidence": None, "source": "User-selected demo label",
+                }
+    with result_col:
+        st.markdown("#### Classification result")
+        if st.session_state.classification_result:
+            result = st.session_state.classification_result
+            st.success(f'{result["category"]}: {result["item"]}')
+            if result["confidence"] is not None:
+                st.metric("Sample confidence", f'{result["confidence"]}%')
+            st.caption(result["source"])
+            st.info(f'Recommended disposal: use the nearest {result["category"]} bin.')
+        else:
+            st.info("Choose a sample item or upload an image and save a demo label.")
+
+with alerts_tab:
+    st.subheader("SmartBin 360 · Alerts & notifications center")
+    st.caption("Alerts are derived from the shared fleet telemetry. Resolve alerts individually or clear resolved history.")
+    alerts = []
+    for item in bins:
+        if item["fill"] >= 95:
+            alerts.append({
+                "id": f'{item["id"]}:overflow', "Bin": item["id"], "Severity": "Critical",
+                "Alert": "Critical overflow risk", "Details": f'{item["name"]} reached {item["fill"]}% capacity.',
+            })
+        elif item["fill"] >= 80:
+            alerts.append({
+                "id": f'{item["id"]}:fill', "Bin": item["id"], "Severity": "High",
+                "Alert": "High fill level", "Details": f'{item["name"]} is at {item["fill"]}% capacity.',
+            })
+        if item["battery"] < 30:
+            alerts.append({
+                "id": f'{item["id"]}:battery', "Bin": item["id"], "Severity": "Warning",
+                "Alert": "Low solar battery", "Details": f'{item["name"]} battery is at {item["battery"]}%.',
+            })
+    open_alerts = [alert for alert in alerts if alert["id"] not in st.session_state.resolved_alerts]
+    st.metric("Open alerts", len(open_alerts))
+    if open_alerts:
+        for alert in open_alerts:
+            alert_cols = st.columns([1, 4, 1])
+            alert_cols[0].metric(alert["Severity"], alert["Bin"])
+            alert_cols[1].markdown(f'**{alert["Alert"]}**  \n{alert["Details"]}')
+            if alert_cols[2].button("Resolve", key=f'resolve_{alert["id"]}'):
+                st.session_state.resolved_alerts.add(alert["id"])
+                st.rerun()
+    else:
+        st.success("No open fleet alerts.")
+    if st.session_state.resolved_alerts and st.button("Clear resolved alert history"):
+        st.session_state.resolved_alerts.clear()
+        st.rerun()
 
 with analytics_tab:
     st.subheader("Carbon reduction & waste analytics")
@@ -184,10 +371,37 @@ with analytics_tab:
         st.line_chart(pd.DataFrame({"CO₂ saved (kg)": [240, 310, 450, 520, 680, 890]}, index=["Jan", "Feb", "Mar", "Apr", "May", "Jun"]), color="#10b981")
     st.markdown("**Overflow history · weekly collections**")
     st.bar_chart(pd.DataFrame({"Overflow reports": [12, 8, 15, 19, 24, 31, 28], "Fuel saved (L)": [42, 50, 38, 30, 25, 18, 22]}, index=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]))
+    st.markdown("**Daily waste collected by campus location (kg)**")
+    st.bar_chart(pd.DataFrame({"Collected (kg)": [210, 180, 350, 420, 150, 95]}, index=["Block A", "Library", "Cafeteria", "Hostel 3", "Stadium", "Admin"]))
 
 with telemetry_tab:
-    st.subheader("IoT & ESP32 live telemetry")
-    st.caption("Diagnostic readings from embedded microcontrollers, GSM modules, and solar charge controllers.")
+    st.subheader("IoT & ESP32 simulator")
+    st.caption("Inspect fleet telemetry, inject simulated sensor values, and send sample MQTT pulses.")
+    simulator_bin = st.selectbox("Select bin to simulate", [b["id"] for b in bins], key="mqtt_bin")
+    simulator_selected = next(b for b in bins if b["id"] == simulator_bin)
+    sensor_cols = st.columns(3)
+    simulated_fill = sensor_cols[0].slider("Ultrasonic fill level (%)", 0, 100, simulator_selected["fill"], key=f"mqtt_fill_{simulator_bin}")
+    battery_voltage = sensor_cols[1].slider(
+        "Solar battery voltage", 3.0, 4.2,
+        round(3.0 + simulator_selected["battery"] / 100 * 1.2, 2),
+        step=0.01, key=f"mqtt_voltage_{simulator_bin}",
+    )
+    simulated_odor = sensor_cols[2].slider("MQ-135 gas / odor (PPM)", 10, 300, simulator_selected["odor"], key=f"mqtt_odor_{simulator_bin}")
+    inject_col, pulse_col = st.columns(2)
+    if inject_col.button("Push simulated MQTT packet", width="stretch"):
+        simulator_selected["fill"] = simulated_fill
+        simulator_selected["battery"] = max(0, min(100, round((battery_voltage - 3.0) / 1.2 * 100)))
+        simulator_selected["odor"] = simulated_odor
+        simulator_selected["cleaned"] = "Telemetry updated just now"
+        st.session_state.toast = f"MQTT telemetry updated for {simulator_bin}."
+        st.rerun()
+    if pulse_col.button("Simulate live IoT pulse", width="stretch"):
+        pulse_bin = random.choice(bins)
+        pulse_bin["fill"] = min(100, pulse_bin["fill"] + random.randint(1, 14))
+        pulse_bin["odor"] = min(300, pulse_bin["odor"] + random.randint(1, 8))
+        pulse_bin["cleaned"] = "Auto pulse just now"
+        st.session_state.toast = f'Live telemetry pulse received from {pulse_bin["id"]}.'
+        st.rerun()
     st.dataframe(
         pd.DataFrame([{
             "Bin": b["id"], "MCU": "ESP32-WROOM-32U", "Firmware": "v2.4.1-build8",
@@ -198,13 +412,47 @@ with telemetry_tab:
         hide_index=True,
         width="stretch",
     )
+    with st.expander("ESP32 firmware blueprint"):
+        st.code(
+            """#include <WiFi.h>
+#include <PubSubClient.h>
+
+// Configure credentials securely on the device; never commit real secrets.
+const char* ssid = "<WIFI_SSID>";
+const char* password = "<WIFI_PASSWORD>";
+const char* mqtt_server = "<MQTT_HOST>";
+const int trigPin = 5;
+const int echoPin = 18;
+const int solarPin = 34;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+}
+
+void loop() {
+  // Read sensors and publish telemetry to the configured MQTT broker.
+  delay(5000);
+}""",
+            language="cpp",
+        )
 
 with tasks_tab:
     st.subheader("Field worker task & schedule manager")
-    st.dataframe(pd.DataFrame(TASKS), hide_index=True, width="stretch")
-    task = st.selectbox("Task to complete", [item["Task"] for item in TASKS])
-    if st.button("Complete selected task"):
-        st.toast(f"Task {task} marked complete by {role}.")
+    tasks_frame = pd.DataFrame([
+        {**item, "Status": "Completed" if item["Task"] in st.session_state.completed_tasks else item["Status"]}
+        for item in TASKS
+    ])
+    st.dataframe(tasks_frame, hide_index=True, width="stretch")
+    incomplete_tasks = [item["Task"] for item in TASKS if item["Task"] not in st.session_state.completed_tasks]
+    if incomplete_tasks:
+        task = st.selectbox("Task to complete", incomplete_tasks)
+        if st.button("Complete selected task"):
+            st.session_state.completed_tasks.add(task)
+            st.rerun()
+    else:
+        st.success("All sample tasks have been completed.")
 
 with reports_tab:
     st.subheader("Community feedback & public reporting")
@@ -224,3 +472,26 @@ with reports_tab:
             })
             st.success("Report submitted. The municipal team has been alerted.")
     st.dataframe(pd.DataFrame(st.session_state.reports), hide_index=True, width="stretch")
+
+with admin_tab:
+    st.subheader("Role-based access & system settings")
+    st.caption(f"Current workspace role: **{role}**")
+    users = pd.DataFrame([
+        {"User": "Alex Morgan", "Email": "alex.morgan@smartbin360.io", "Role": "Administrator", "Status": "Online", "Access": "Full access"},
+        {"User": "Rajesh Kumar", "Email": "rajesh.kumar@smartbin360.io", "Role": "Waste Collector", "Status": "Online", "Access": "Tasks and collections"},
+        {"User": "Ananya S.", "Email": "ananya.s@example.com", "Role": "Public Viewer", "Status": "Online", "Access": "Reports and map"},
+    ])
+    st.dataframe(users, hide_index=True, width="stretch")
+    access = pd.DataFrame([
+        {"Capability": "View fleet, map, and analytics", "Manager": "Yes", "Worker": "Yes", "Public": "Yes"},
+        {"Capability": "Register bins and tune sensors", "Manager": "Yes", "Worker": "No", "Public": "No"},
+        {"Capability": "Complete field tasks", "Manager": "Yes", "Worker": "Yes", "Public": "No"},
+        {"Capability": "Submit public reports", "Manager": "Yes", "Worker": "Yes", "Public": "Yes"},
+    ])
+    st.markdown("#### Access matrix")
+    st.dataframe(access, hide_index=True, width="stretch")
+    st.markdown("#### Notification preferences")
+    notify_cols = st.columns(3)
+    notify_cols[0].checkbox("Overflow alerts", value=True)
+    notify_cols[1].checkbox("Low battery alerts", value=True)
+    notify_cols[2].checkbox("Public report updates", value=True)
