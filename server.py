@@ -6,6 +6,29 @@ import streamlit as st
 
 
 st.set_page_config(page_title="EcoBin AI + SmartBin 360", page_icon="♻️", layout="wide")
+st.markdown(
+    """
+    <style>
+    .stApp { background: #070b12; color: #e2e8f0; }
+    [data-testid="stMetric"] { background: #0d1627; border: 1px solid #1e293b; padding: 14px; border-radius: 12px; }
+    [data-testid="stSidebar"] { background: #0b1322; }
+    h1, h2, h3 { color: #f1f5f9; }
+    @keyframes dashboard-enter {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    [data-testid="stMainBlockContainer"] {
+        animation: dashboard-enter 650ms ease-out both;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        [data-testid="stMainBlockContainer"] {
+            animation: none;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 auth.initialize_auth()
 user = auth.current_user()
 if user is None:
@@ -62,18 +85,6 @@ if "completed_tasks" not in st.session_state:
     st.session_state.completed_tasks = set()
 if "toast" in st.session_state:
     st.toast(st.session_state.pop("toast"))
-
-st.markdown(
-    """
-    <style>
-    .stApp { background: #070b12; color: #e2e8f0; }
-    [data-testid="stMetric"] { background: #0d1627; border: 1px solid #1e293b; padding: 14px; border-radius: 12px; }
-    [data-testid="stSidebar"] { background: #0b1322; }
-    h1, h2, h3 { color: #f1f5f9; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 
 st.title("♻️ EcoBin AI + SmartBin 360")
 st.caption("UNIFIED SMART WASTE DASHBOARD · LIVE FLEET + IOT TELEMETRY")
